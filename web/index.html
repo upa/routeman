@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title> routeman (version 0.0.1) </title>
+    <link rel="stylesheet" href="css/routeman.css">
+    <script src="js/jquery-3.2.1.min.js"></script>
+    <script src="js/routeman.js"></script>
+  </head>
+
+
+  <body>
+    <div id="header">
+      <h1> routeman. </h1>
+    </div>
+
+    <div id="body">
+
+      <div class="chart">
+	<span class="failed">!X.X.X.X</span>:
+	probe failed on this hop.
+	<span class="new">+X.X.X.X</span>:
+	new hop appeared on this probe.
+	<span class="lost">X.X.X.X-</span>
+	: this hop disappeared on this probe.
+      </div>
+
+
+    </div>
+
+    <script>
+      refresh_result("output.json");
+      setInterval("refresh_result('output.json');", 4000);
+    </script>
+
+  </body>
+</html>

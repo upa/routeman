@@ -1,0 +1,60 @@
+/*
+ *  routeman css
+ */
+
+body {
+        font-family: Consolas, Courier, Monaco, monospace;
+        font-size: 14.5px;
+        line-height: 1;
+        padding: 10px 10px 10px 10px;
+        background-color: #212121;
+        color: #eeeeee;
+}
+
+h1,h2,h3,h4,h5,h6 {
+        margin: 0 0 0 0;
+        font-weight: normal;
+        font-size: 1.8em;
+}
+
+#header {
+        margin: 0 0 5px 0;
+}
+
+.chart {
+        border-bottom: 0.5px solid #aaaaaa;
+        margin: 20px 0 20px 0;
+}
+
+.probe {
+        margin: 10px 0 0 0;
+}
+
+.target {
+	margin: 0 0 0 0;
+}
+
+h3 {
+        font-size: 1.0em;
+        margin: 1.5em 0 0.5em;
+}
+
+
+
+table {
+        border: none;
+}
+
+table tr td {
+        text-align: center;
+        padding: 0 0 0 0.5em;
+	width: 130px;
+}
+
+table tr td.count { width: 20px; }
+
+.left	{ text-align: left; }
+
+.lost	{ color: #ff4500; }
+.new	{ color: #00ff7f; }
+.failed	{ color: #87ceeb; }

@@ -1,0 +1,267 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+RouteMan
+
+Proving paths using 'traceroute' command, save results, and
+export the results as a json file.
+
+"""
+
+
+import os
+import re
+import sys
+import time
+import json
+import locale
+import signal
+import datetime
+import commands
+from optparse import OptionParser
+
+
+locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
+
+
+class Traceroute() :
+
+    def __init__(self, addr, name, params = None,
+                 timeout = 1, max_ttl = 16, save_num = 4) :
+        self.addr = addr
+        self.name = name
+        self.params = params
+        self.timeout = timeout
+        self.max_ttl = max_ttl
+        self.save_num = save_num
+        self.trcmd = self._get_trcmd()
+        self.updated = datetime.datetime.now()
+
+        self.paths = [] # array of paths 
+
+    def __str__(self) :
+        return str("\n".join(map(str, self.paths)))
+
+
+    def run(self) :
+
+        path = [datetime.datetime.now().strftime("%H:%M:%S")]
+
+        output = commands.getoutput(self.trcmd)
+        lines = output.split('\n')
+
+        for l in lines :
+            if "traceroute to " in l : continue
+
+            l = l.strip()
+            path.append(re.split(' +', l)[1])
+
+        self.updated = path[0]
+        self.append_path(path)
+
+
+    def append_path(self, path) :
+
+        if not self.paths :
+            self.paths.append(path)
+            return
+
+        last = self.paths[len(self.paths) - 1]
+
+        # Compare last path and current path
+        
+        x = len(last) if len(last) < len(path) else len(path)
+        changed = False
+
+        for n in range(1, x - 1) :
+
+            c = path[n]
+            l = last[n]
+
+            if c == l.strip("+-!") :
+                # Same path
+                continue
+
+            if c == "*" :
+                if l[0] == "!" :
+                    # this hop keeps dropping
+                    continue
+
+                if l != "*" :
+                    # last probe, this hop was resolved,
+                    # but this probe, failed. so, use last data
+                    path[n] = "!%s" % l.strip("+-!")
+
+
+            if (l != "*" and 
+                c != "*" and
+                not l in map(lambda x: x.strip("+-!"), path[1:])) :
+                # if l does not exist in the path, add mark "-" to the right
+                last[n] = "%s-" % l.strip("+-!")
+
+            if (c != "*" and 
+                l != "*" and
+                not c in map(lambda x: x.strip("+-!"), last[1:])) :
+                # if c does not exist in the last, add mark "+" to the left
+                path[n] = "+%s" % c
+
+            changed = True
+
+        
+        if changed :
+            self.paths.append(path)
+
+            if len(self.paths) > self.save_num :
+                self.paths.pop(0)
+        else :
+            # not changed. update timestamp
+            last[0] = path[0]
+
+        return
+
+
+    def dump(self) :
+
+        return {
+            "addr" : self.addr,
+            "name" : self.name,
+            "updated" : self.updated,
+            "paths" : self.paths
+            }
+        
+
+    def _get_trcmd(self) :
+
+        """  return OS (BSD/Linux) depend traceroute command  """
+
+        osname = commands.getoutput("uname -s")
+
+        if osname == "Darwin" :
+            return ("traceroute -nI -w %d -m %d -q 1 %s" %
+                    (self.timeout, self.max_ttl, self.addr))
+
+        else :
+            raise RunError("unsupported OS '%s'" % osname)
+        
+
+class Routeman() :
+
+    def __init__(self, configfile, outputfile,
+                 timeout = 1, max_ttl = 16, save_num = 4) :
+
+        self.timeout = 1
+        self.max_ttl = 16
+        self.save_num = save_num
+        self.outputfile = outputfile
+        self.targets = []
+
+        self.load_config(configfile)
+
+
+    def load_config(self, configfile) :
+
+        try :
+            cf = open(configfile, "r")
+        except :
+            sys.exit("can not open config file '%s'" % configfile)
+        
+        for line in cf :
+
+            line = re.sub ('\t', ' ', line)
+            line = re.sub ('\s+', ' ', line)
+            line = re.sub ('#.*', '', line)
+            line = line.strip (' \r\n')
+            line = line.rstrip (' \r\n')
+            if line == "" :
+                continue
+            
+            ss = line.split(' ')
+            name = ss.pop(0)
+            addr = ss.pop(0)
+
+            params = {}
+            for s in ss :
+                k, v = s.split("=")
+                params[k] = v
+                
+            self.targets.append(Traceroute(addr, name, params = params,
+                                           timeout = self.timeout,
+                                           max_ttl = self.max_ttl,
+                                           save_num = self.save_num))
+        return
+
+
+
+    def run(self) :
+
+        while True :
+        
+            r = []
+
+            for target in self.targets :
+                target.run()
+                r.append(target.dump())
+
+            if self.outputfile == "stdout" :
+                print json.dumps(r, indent = 4)
+            else :
+                with open(self.outputfile, "w") as f :
+                    json.dump(r, f)
+                
+            time.sleep(1)
+
+
+
+        
+
+def sigint_handler(signum, frame) :
+    sys.exit(1)
+
+
+if __name__ == "__main__" :
+
+    desc = "usage : %prog [options] configfile"
+    parser = OptionParser(desc)
+
+    parser.add_option("-t", "--timeout", type = "int", default = 1,
+                      dest = "timeout", help = "timeout of traceroute")
+    parser.add_option("-m", "--max-ttl", type = "int", default = 16,
+                      dest = "max_ttl", help = "max ttl of traceroute")
+    parser.add_option("-s", "--saved-result-num", type = "int", default = 6,
+                      dest = "save_num", help = "number of saved results")
+    parser.add_option("-o", "--output-file", type = "str",
+                      default = "web/output.json", dest = "output",
+                      help = "output json file")
+
+    (options, args) = parser.parse_args()
+
+    routeman = Routeman(args[0], options.output,
+                        timeout = options.timeout,
+                        max_ttl = options.max_ttl,
+                        save_num = options.save_num)
+    routeman.run()
+
+
+
+""" Test
+t = Traceroute("8.8.8.8", save_num = 10)
+t.run()
+
+t.append_path(["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"])
+t.append_path(["1.1.1.1", "2.2.2.2", "4.4.4.4", "9.9.9.9", "5.5.5.5"])
+t.append_path(["1.1.1.1", "2.2.2.2", "9.9.9.9", "5.5.5.5"])
+t.append_path(["1.1.1.1", "*", "*", "5.5.5.5" ])
+t.append_path(["1.1.1.1", "*", "*", "5.5.5.5" ])
+t.append_path(["1.1.1.1", "2.2.2.2", "*", "5.5.5.5" ])
+t.append_path(["1.1.1.1", "2.2.2.2", "9.9.9.9", "5.5.5.5" ])
+
+t.append_path(["2.2.2.2", "1.1.1.1"])
+t.append_path(["1.1.1.1", "2.2.2.2"])
+t.append_path(["2.2.2.2", "1.1.1.1"])
+t.append_path(["1.1.1.1", "2.2.2.2"])
+t.append_path(["2.2.2.2", "1.1.1.1"])
+t.append_path(["1.1.1.1", "2.2.2.2"])
+
+print t
+"""
